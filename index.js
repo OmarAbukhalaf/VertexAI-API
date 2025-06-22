@@ -7,20 +7,26 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// === Firebase Admin Initialization ===
-const firebaseServiceAccount = require('./fb-omar.json');
+// === Firebase Admin Initialization from ENV ===
+const firebaseBase64 = process.env.FIREBASE_CREDENTIALS_BASE64;
+const firebaseServiceAccount = JSON.parse(
+  Buffer.from(firebaseBase64, 'base64').toString('utf8')
+);
 
 admin.initializeApp({
   credential: admin.credential.cert(firebaseServiceAccount),
 });
 const db = admin.firestore();
 
-// === Dialogflow Service Account Path ===
-const credentialsPath = 'service-account.json';
-
+// === Dialogflow Auth from ENV ===
 async function getAccessToken() {
+  const dialogflowBase64 = process.env.DIALOGFLOW_CREDENTIALS_BASE64;
+  const dialogflowCredentials = JSON.parse(
+    Buffer.from(dialogflowBase64, 'base64').toString('utf8')
+  );
+
   const auth = new GoogleAuth({
-    keyFile: credentialsPath,
+    credentials: dialogflowCredentials,
     scopes: ['https://www.googleapis.com/auth/cloud-platform'],
   });
 
@@ -36,12 +42,11 @@ async function getAdvertiserData(advertiserId) {
 }
 
 // === Detect Intent ===
-async function detectIntent({ projectId, locationId, agentId, sessionId, message,advertiserName, advertiserData = {} }) {
+async function detectIntent({ projectId, locationId, agentId, sessionId, message, advertiserName, advertiserData = {} }) {
   const accessToken = await getAccessToken();
 
   const url = `https://${locationId}-dialogflow.googleapis.com/v3/projects/${projectId}/locations/${locationId}/agents/${agentId}/sessions/${sessionId}:detectIntent`;
 
-  // 🧠 Prompt with advertiser data
   const prompt = `
 You are a customer support assistant.
 Always follow the brand's support style. Be conversational, clear, and helpful. Never mention that you are an AI.
@@ -63,10 +68,8 @@ If the user’s message is confusing or unclear, reply with:
 Style Guide
 
 Apply custom vocabulary where relevant.
-
-
 `;
-console.log(prompt)
+
   const finalMessage = `${prompt.trim()}\n\nAdvertiser:${advertiserName}\n\n Query:${message}`;
 
   const payload = {
@@ -117,7 +120,7 @@ app.post('/chat', async (req, res) => {
     });
 
     res.json({ response });
-    console.log("Response:", response)
+    console.log("Response:", response);
   } catch (err) {
     console.error(err.response?.data || err.message);
     res.status(500).json({ error: 'Failed to contact Gemini agent' });
