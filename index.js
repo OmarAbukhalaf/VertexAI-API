@@ -3,6 +3,8 @@ const { GoogleAuth } = require('google-auth-library');
 const axios = require('axios');
 const admin = require('firebase-admin');
 const app = express();
+const NodeCache = require('node-cache');
+const promptCache = new NodeCache({ stdTTL: 3600 });
 const PORT = 3000;
 
 app.use(express.json());
