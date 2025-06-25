@@ -36,41 +36,46 @@ async function getAccessToken() {
 }
 
 // === Get Advertiser Data ===
+// === Get Advertiser Data ===
 async function getAdvertiserData(advertiserId) {
+  const cachedData = promptCache.get(advertiserId);
+  if (cachedData) {
+    console.log('Prompt fetched from cache');
+    console.log(cachedData)
+    return cachedData; // now returns { prompt, timestamp }
+  }
+
   const doc = await db.collection('advertiser_settings').doc(advertiserId).get();
-  return doc.exists ? doc.data() : {};
+  if (doc.exists) {
+    const data = doc.data();
+    const promptObj = {
+      prompt: data.Prompt,
+      timestamp: data.Prompt_last_updated?.toDate?.() || null
+    };
+    promptCache.set(advertiserId, {
+  prompt: data.Prompt,
+  timestamp: data.Prompt_last_updated?.toDate?.() || null
+  });
+
+    console.log('Prompt fetched from Firestore and cached');
+    return promptObj;
+  }
+
+  return {};
 }
 
+
 // === Detect Intent ===
-async function detectIntent({ projectId, locationId, agentId, sessionId, message, advertiserName, advertiserData = {} }) {
+async function detectIntent({ projectId, locationId, agentId, sessionId, message,advertiserName, advertiserData = {} }) {
   const accessToken = await getAccessToken();
 
   const url = `https://${locationId}-dialogflow.googleapis.com/v3/projects/${projectId}/locations/${locationId}/agents/${agentId}/sessions/${sessionId}:detectIntent`;
 
-  const prompt = `
-You are a customer support assistant.
-Always follow the brand's support style. Be conversational, clear, and helpful. Never mention that you are an AI.
+  // 🧠 Prompt with advertiser data
+  const prompt = advertiserData.Prompt;
 
-Custom Vocabulary: Use brand-specific terms when applicable.
-Example: ${advertiserData.CustomVocab || ''}
 
-Behavior Rules
-Banned Phrases: ${advertiserData.BannedPhrases || ''}
-If any word or phrase from this list appears anywhere in the user's message, immediately respond with:
-"Banned Phrase used." 
-
-Tone: ${advertiserData.Tone || ''}
-
-Unclear Input:
-If the user’s message is confusing or unclear, reply with:
-"I didn’t quite catch that. Could you try rephrasing?"
-
-Style Guide
-
-Apply custom vocabulary where relevant.
-`;
-
-  const finalMessage = `${prompt.trim()}\n\nAdvertiser:${advertiserName}\n\n Query:${message}`;
+  const finalMessage = `${prompt}\n\nAdvertiser:${advertiserName}\n\n Query:${message}`;
 
   const payload = {
     queryInput: {
@@ -120,12 +125,67 @@ app.post('/chat', async (req, res) => {
     });
 
     res.json({ response });
-    console.log("Response:", response);
+    console.log("Response:", response)
   } catch (err) {
     console.error(err.response?.data || err.message);
     res.status(500).json({ error: 'Failed to contact Gemini agent' });
   }
 });
+
+app.post('/update-prompt', async (req, res) => {
+  const { advertiserId } = req.body;
+    console.log("AAAAAAAAAA")
+  if (!advertiserId) {
+    return res.status(400).json({ error: 'Missing advertiserId' });
+  }
+
+  try {
+    const docRef = db.collection('advertiser_settings').doc(advertiserId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: 'Advertiser not found' });
+    }
+
+    const advertiserData = doc.data();
+
+    // Fetch fields you want to use to build the prompt
+
+    // Compose a new prompt string based on available data
+    const newPrompt = `You are a customer support assistant.
+Always follow the brand's support style. Be conversational, clear, and helpful. Never mention that you are an AI.
+
+Custom Vocabulary: Use brand-specific terms when applicable.
+Example: ${advertiserData.CustomVocab || ''}
+
+Behavior Rules
+Banned Phrases: ${advertiserData.BannedPhrases || ''}
+If any word or phrase from this list appears anywhere in the user's message, immediately respond with:
+"Banned Phrase used." 
+
+Tone: ${advertiserData.Tone || ''}
+
+Unclear Input:
+If the user’s message is confusing or unclear, reply with:
+"I didn’t quite catch that. Could you try rephrasing?"
+
+Style Guide
+
+Apply custom vocabulary where relevant.`;
+
+    // Update the prompt field in the document
+    await docRef.update({
+  Prompt: newPrompt,
+  Prompt_last_updated: admin.firestore.FieldValue.serverTimestamp()
+});
+
+    return res.json({ message: 'Prompt updated successfully', prompt: newPrompt });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Failed to update prompt' });
+  }
+});
+
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
