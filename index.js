@@ -37,33 +37,47 @@ async function getAccessToken() {
   return token.token;
 }
 
-// === Get Advertiser Data ===
-// === Get Advertiser Data ===
 async function getAdvertiserData(advertiserId) {
+  // ✅ Return prompt from cache if available
   const cachedData = promptCache.get(advertiserId);
   if (cachedData) {
     console.log('Prompt fetched from cache');
-    console.log(cachedData)
-    return cachedData; // now returns { prompt, timestamp }
+    return cachedData; // { prompt: string, timestamp: Date }
   }
 
   const doc = await db.collection('advertiser_settings').doc(advertiserId).get();
-  if (doc.exists) {
-    const data = doc.data();
-    const promptObj = {
-      prompt: data.Prompt,
-      timestamp: data.Prompt_last_updated?.toDate?.() || null
-    };
-    promptCache.set(advertiserId, {
-  prompt: data.Prompt,
-  timestamp: data.Prompt_last_updated?.toDate?.() || null
-  });
-
-    console.log('Prompt fetched from Firestore and cached');
-    return promptObj;
+  if (!doc.exists) {
+    return { prompt: '', timestamp: null };
   }
 
-  return {};
+  const data = doc.data();
+
+  // ✅ Generate prompt dynamically
+  const generatedPrompt = `You are a customer support assistant.
+Always follow the brand's support style. Be conversational, clear, and helpful. Never mention that you are an AI.
+
+Custom Vocabulary: Use brand-specific terms when applicable.
+Example: ${data.CustomVocab || ''}
+
+Behavior Rules
+Banned Phrases: ${data.BannedPhrases || ''}
+If any word or phrase from this list appears anywhere in the user's message, immediately respond with:
+"Banned Phrase used." 
+
+Tone: ${data.Tone || ''}
+
+Unclear Input:
+If the user’s message is confusing or unclear, reply with:
+"I didn’t quite catch that. Could you try rephrasing?"
+
+Style Guide
+
+Apply custom vocabulary where relevant.`;
+
+  const promptObj = { prompt: generatedPrompt, timestamp: new Date() };
+  promptCache.set(advertiserId, promptObj);
+  console.log('Prompt generated and cached');
+  return promptObj;
 }
 
 
@@ -131,60 +145,6 @@ app.post('/chat', async (req, res) => {
   } catch (err) {
     console.error(err.response?.data || err.message);
     res.status(500).json({ error: 'Failed to contact Gemini agent' });
-  }
-});
-
-app.post('/update-prompt', async (req, res) => {
-  const { advertiserId } = req.body;
-    console.log("AAAAAAAAAA")
-  if (!advertiserId) {
-    return res.status(400).json({ error: 'Missing advertiserId' });
-  }
-
-  try {
-    const docRef = db.collection('advertiser_settings').doc(advertiserId);
-    const doc = await docRef.get();
-
-    if (!doc.exists) {
-      return res.status(404).json({ error: 'Advertiser not found' });
-    }
-
-    const advertiserData = doc.data();
-
-    // Fetch fields you want to use to build the prompt
-
-    // Compose a new prompt string based on available data
-    const newPrompt = `You are a customer support assistant.
-Always follow the brand's support style. Be conversational, clear, and helpful. Never mention that you are an AI.
-
-Custom Vocabulary: Use brand-specific terms when applicable.
-Example: ${advertiserData.CustomVocab || ''}
-
-Behavior Rules
-Banned Phrases: ${advertiserData.BannedPhrases || ''}
-If any word or phrase from this list appears anywhere in the user's message, immediately respond with:
-"Banned Phrase used." 
-
-Tone: ${advertiserData.Tone || ''}
-
-Unclear Input:
-If the user’s message is confusing or unclear, reply with:
-"I didn’t quite catch that. Could you try rephrasing?"
-
-Style Guide
-
-Apply custom vocabulary where relevant.`;
-
-    // Update the prompt field in the document
-    await docRef.update({
-  Prompt: newPrompt,
-  Prompt_last_updated: admin.firestore.FieldValue.serverTimestamp()
-});
-
-    return res.json({ message: 'Prompt updated successfully', prompt: newPrompt });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Failed to update prompt' });
   }
 });
 
