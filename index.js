@@ -3,32 +3,25 @@ const { GoogleAuth } = require('google-auth-library');
 const axios = require('axios');
 const admin = require('firebase-admin');
 const app = express();
+const PORT = 3000;
 const NodeCache = require('node-cache');
 const promptCache = new NodeCache({ stdTTL: 3600 });
-const PORT = 3000;
-
 app.use(express.json());
 
-// === Firebase Admin Initialization from ENV ===
-const firebaseBase64 = process.env.FIREBASE_CREDENTIALS_BASE64;
-const firebaseServiceAccount = JSON.parse(
-  Buffer.from(firebaseBase64, 'base64').toString('utf8')
-);
+// === Firebase Admin Initialization ===
+const firebaseServiceAccount = require('./fb-omar.json');
 
 admin.initializeApp({
   credential: admin.credential.cert(firebaseServiceAccount),
 });
 const db = admin.firestore();
 
-// === Dialogflow Auth from ENV ===
-async function getAccessToken() {
-  const dialogflowBase64 = process.env.DIALOGFLOW_CREDENTIALS_BASE64;
-  const dialogflowCredentials = JSON.parse(
-    Buffer.from(dialogflowBase64, 'base64').toString('utf8')
-  );
+// === Dialogflow Service Account Path ===
+const credentialsPath = 'service-account.json';
 
+async function getAccessToken() {
   const auth = new GoogleAuth({
-    credentials: dialogflowCredentials,
+    keyFile: credentialsPath,
     scopes: ['https://www.googleapis.com/auth/cloud-platform'],
   });
 
@@ -37,6 +30,7 @@ async function getAccessToken() {
   return token.token;
 }
 
+// === Get Advertiser Data ===
 async function getAdvertiserData(advertiserId) {
   // ✅ Return prompt from cache if available
   const cachedData = promptCache.get(advertiserId);
@@ -49,22 +43,22 @@ async function getAdvertiserData(advertiserId) {
   if (!doc.exists) {
     return { prompt: '', timestamp: null };
   }
+  
 
   const data = doc.data();
+  const customVocab = data.ADV_custom_vocab?.trim();
+  const tone = data.ADV_tone?.trim();
 
+  const missingfields=!customVocab || !tone;
   // ✅ Generate prompt dynamically
   const generatedPrompt = `You are a customer support assistant.
 Always follow the brand's support style. Be conversational, clear, and helpful. Never mention that you are an AI.
 
 Custom Vocabulary: Use brand-specific terms when applicable.
-Example: ${data.CustomVocab || ''}
+Example: ${customVocab||""}
 
 Behavior Rules
-Banned Phrases: ${data.BannedPhrases || ''}
-If any word or phrase from this list appears anywhere in the user's message, immediately respond with:
-"Banned Phrase used." 
-
-Tone: ${data.Tone || ''}
+Tone: ${tone||""}
 
 Unclear Input:
 If the user’s message is confusing or unclear, reply with:
@@ -74,7 +68,7 @@ Style Guide
 
 Apply custom vocabulary where relevant.`;
 
-  const promptObj = { prompt: generatedPrompt, timestamp: new Date() };
+  const promptObj = { prompt: generatedPrompt, timestamp: new Date(), missingfields };
   promptCache.set(advertiserId, promptObj);
   console.log('Prompt generated and cached');
   return promptObj;
@@ -89,6 +83,8 @@ async function detectIntent({ projectId, locationId, agentId, sessionId, message
 
   // 🧠 Prompt with advertiser data
   const prompt = advertiserData.Prompt;
+  const missingFields = advertiserData.missingfields;
+
 
 
   const finalMessage = `${prompt}\n\nAdvertiser:${advertiserName}\n\n Query:${message}`;
@@ -111,7 +107,10 @@ async function detectIntent({ projectId, locationId, agentId, sessionId, message
   });
 
   const result = response.data.queryResult;
-  return result.responseMessages?.[0]?.text?.text?.[0] || 'No response from agent.';
+  
+  const result_text=result.responseMessages?.[0]?.text?.text?.[0] || 'No response from agent.';
+  return missingFields ? `Missing Fields: ${result_text}` : result_text;
+
 }
 
 // === Express POST /chat Endpoint ===
