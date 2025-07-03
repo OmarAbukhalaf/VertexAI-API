@@ -1,27 +1,39 @@
++32
+-72
+Lines changed: 32 additions & 72 deletions
+Original file line number	Original file line	Diff line number	Diff line change
+@@ -1,69 +1,83 @@
 const express = require('express');
 const { GoogleAuth } = require('google-auth-library');
 const axios = require('axios');
 const admin = require('firebase-admin');
 const app = express();
-const PORT = 3000;
 const NodeCache = require('node-cache');
 const promptCache = new NodeCache({ stdTTL: 3600 });
+const PORT = 3000;
+
 app.use(express.json());
 
-// === Firebase Admin Initialization ===
-const firebaseServiceAccount = require('./fb-omar.json');
+// === Firebase Admin Initialization from ENV ===
+const firebaseBase64 = process.env.FIREBASE_CREDENTIALS_BASE64;
+const firebaseServiceAccount = JSON.parse(
+  Buffer.from(firebaseBase64, 'base64').toString('utf8')
+);
 
 admin.initializeApp({
   credential: admin.credential.cert(firebaseServiceAccount),
 });
 const db = admin.firestore();
 
-// === Dialogflow Service Account Path ===
-const credentialsPath = 'service-account.json';
-
+// === Dialogflow Auth from ENV ===
 async function getAccessToken() {
+  const dialogflowBase64 = process.env.DIALOGFLOW_CREDENTIALS_BASE64;
+  const dialogflowCredentials = JSON.parse(
+    Buffer.from(dialogflowBase64, 'base64').toString('utf8')
+  );
+
   const auth = new GoogleAuth({
-    keyFile: credentialsPath,
+    credentials: dialogflowCredentials,
     scopes: ['https://www.googleapis.com/auth/cloud-platform'],
   });
 
@@ -29,6 +41,7 @@ async function getAccessToken() {
   const token = await client.getAccessToken();
   return token.token;
 }
+
 
 // === Get Advertiser Data ===
 async function getAdvertiserData(advertiserId) {
