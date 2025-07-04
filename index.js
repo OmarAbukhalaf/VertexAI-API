@@ -7,7 +7,8 @@ const app = express();
 const NodeCache = require('node-cache');
 const promptCache = new NodeCache({ stdTTL: 3600 });
 const PORT = 3000;
-
+const cors = require('cors');
+app.use(cors({ origin: '*' })); 
 app.use(express.json());
 
 // === Firebase Admin Initialization from ENV ===
