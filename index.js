@@ -56,27 +56,48 @@ async function getAdvertiserData(advertiserId) {
   
 
   const data = doc.data();
-  const customVocab = data.ADV_custom_vocab?.trim();
-  const tone = data.ADV_tone?.trim();
+  const customVocab = data.ADV_custom_vocab;
+  const tone = data.ADV_language_style;
+  const banned_phrases=data.ADV_banned_phrases;
+  const trigger_condition =data.ADV_trigger_condition;
+  const trigger_delay=data.ADV_trigger_delay;
+  const trigger_message=data.ADV_trigger_message;
+  const idle_timeout_msg=data.ADV_idle_timeout_msg;
+  const fallback_message=data.ADV_fallback_message;
+  const ai_instructions=data.ADV_ai_instructions;
 
-  const missingfields=!customVocab || !tone;
+  const missingfields=!customVocab || !tone||!banned_phrases||!trigger_condition||!trigger_delay||!trigger_message||!idle_timeout_msg||!fallback_message||!ai_instructions;
   // ✅ Generate prompt dynamically
-  const generatedPrompt = `You are a customer support assistant.
+  const generatedPrompt = `${ai_instructions || "You are a customer support assistant."}
 Always follow the brand's support style. Be conversational, clear, and helpful. Never mention that you are an AI.
 
 Custom Vocabulary: Use brand-specific terms when applicable.
-Example: ${customVocab||""}
+Example: ${customVocab || ""}
 
-Behavior Rules
-Tone: ${tone||""}
+Behavior Rules:
+Tone: ${tone || "friendly and professional"}
 
-Unclear Input:
+❗ Banned Phrases:
+Never use or repeat the following: ${banned_phrases || "[none specified]"}
+
+🔁 Unclear Input:
 If the user’s message is confusing or unclear, reply with:
 "I didn’t quite catch that. Could you try rephrasing?"
 
-Style Guide
+🕒 Idle Timeout Trigger:
+If no user input is received and the condition ${trigger_condition || "user_idle_for_30s"} is met after ${trigger_delay || 5000}ms, initiate:
+"${trigger_message || 'Hi there! Need help with anything?'}"
 
-Apply custom vocabulary where relevant.`;
+⌛ Idle Timeout Message:
+If the user has been inactive for an extended period, send:
+"${idle_timeout_msg || 'Still there? Let me know if you need anything!'}"
+
+⚠️ Fallback Handling:
+If no suitable response or intent is found, use the fallback message:
+"${fallback_message || 'I’m here to help, but I might need a bit more info to assist you.'}"
+
+Style Guide:
+Apply custom vocabulary and adhere to tone and language style across all replies.`;
 
   const promptObj = { prompt: generatedPrompt, timestamp: new Date(), missingfields };
   promptCache.set(advertiserId, promptObj);
