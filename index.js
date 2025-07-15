@@ -7,9 +7,16 @@ const app = express();
 const NodeCache = require('node-cache');
 const promptCache = new NodeCache({ stdTTL: 3600 });
 const PORT = 3000;
+const path = require('path');
+const multer = require('multer');
+const { Storage } = require('@google-cloud/storage');
 const cors = require('cors');
 app.use(cors({ origin: '*' })); 
 app.use(express.json());
+
+
+
+
 
 // === Firebase Admin Initialization from ENV ===
 const firebaseBase64 = process.env.FIREBASE_CREDENTIALS_BASE64;
@@ -21,6 +28,9 @@ admin.initializeApp({
   credential: admin.credential.cert(firebaseServiceAccount),
 });
 const db = admin.firestore();
+
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 // === Dialogflow Auth from ENV ===
 async function getAccessToken() {
@@ -38,6 +48,10 @@ async function getAccessToken() {
   const token = await client.getAccessToken();
   return token.token;
 }
+
+const storage = new Storage({
+  credentials: dialogflowCredentials,
+});
 
 
 // === Get Advertiser Data ===
