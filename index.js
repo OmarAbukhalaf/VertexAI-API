@@ -178,6 +178,61 @@ app.post('/chat', async (req, res) => {
   }
 });
 
+// Route: Upload multiple files + advertiserName
+app.post('/upload', upload.array('files'), async (req, res) => {
+  const advertiserName = req.body.advertiserName;
+  const files = req.files;
+  console.log(files)
+  if (!advertiserName) return res.status(400).send('Missing advertiserName');
+  if (!files || files.length === 0) return res.status(400).send('No files uploaded');
+
+  try {
+    const bucketName = advertiserName.toLowerCase().replace(/\s+/g, '-');
+
+    // Check if bucket exists
+    const [buckets] = await storage.getBuckets();
+    let bucket = buckets.find(b => b.name === bucketName);
+
+    if (!bucket) {
+      console.log(`Creating new bucket: ${bucketName}`);
+      [bucket] = await storage.createBucket(bucketName, {
+        location: 'US',
+        storageClass: 'STANDARD',
+      });
+    }
+
+    const uploadedFiles = [];
+
+    for (const file of files) {
+      const blob = bucket.file(file.originalname);
+      const blobStream = blob.createWriteStream({
+        resumable: false,
+        contentType: file.mimetype,
+      });
+
+      await new Promise((resolve, reject) => {
+        blobStream.on('error', reject);
+        blobStream.on('finish', resolve);
+        blobStream.end(file.buffer);
+      });
+
+      // Optional: Make public
+      // await blob.makePublic();
+      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
+      uploadedFiles.push({ fileName: file.originalname, url: publicUrl });
+    }
+
+    res.status(200).json({
+      message: `Uploaded ${uploadedFiles.length} file(s) to bucket "${bucket.name}"`,
+      files: uploadedFiles,
+    });
+
+  } catch (err) {
+    console.error('Upload failed:', err);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
