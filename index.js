@@ -44,14 +44,16 @@ async function getAccessToken() {
     scopes: ['https://www.googleapis.com/auth/cloud-platform'],
   });
 
+  const storage = new Storage({
+  credentials: dialogflowCredentials,
+});
+
   const client = await auth.getClient();
   const token = await client.getAccessToken();
   return token.token;
 }
 
-const storage = new Storage({
-  credentials: dialogflowCredentials,
-});
+
 
 
 // === Get Advertiser Data ===
