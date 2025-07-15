@@ -16,8 +16,11 @@ app.use(express.json());
 
 
 
-
-
+const dialogflowBase64 = process.env.DIALOGFLOW_CREDENTIALS_BASE64;
+const dialogflowCredentials = JSON.parse(Buffer.from(dialogflowBase64, 'base64').toString('utf8'));
+const storage = new Storage({
+  credentials: dialogflowCredentials,
+});
 // === Firebase Admin Initialization from ENV ===
 const firebaseBase64 = process.env.FIREBASE_CREDENTIALS_BASE64;
 const firebaseServiceAccount = JSON.parse(
@@ -44,9 +47,7 @@ async function getAccessToken() {
     scopes: ['https://www.googleapis.com/auth/cloud-platform'],
   });
 
-  const storage = new Storage({
-  credentials: dialogflowCredentials,
-});
+ 
 
   const client = await auth.getClient();
   const token = await client.getAccessToken();
